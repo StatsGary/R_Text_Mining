@@ -1,0 +1,101 @@
+#RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+#-------------------------Code written by Gary Hutson ------------------------------------------
+
+
+install_or_load_pack <- function(pack){
+  create.pkg <- pack[!(pack %in% installed.packages()[, "Package"])]
+  if (length(create.pkg))
+    install.packages(create.pkg, dependencies = TRUE)
+  sapply(pack, require, character.only = TRUE)
+  }
+packages <- c("ggplot2", "tidyverse",  "data.table", "wordcloud", "tm", "wordcloud2",
+              "scales", "tidytext", "devtools", "twitteR", "caret", "magrittr", "RColorBrewer", "tidytext", "ggdendro",
+              "tidyr", "topicmodels", "SnowballC", "gtools")
+install_or_load_pack(packages)
+
+#Get the required packages into the R environment for processing
+
+
+path <- choose.files()
+path
+
+
+#Create data frame
+workshop_sentiment <- read_csv(path, col_names = T)
+#Copy data frame with two columns for observations in scope
+ws_highlights <- workshop_sentiment %>%
+  .[,1]
+#Copy for improvements
+ws_improvements <- workshop_sentiment %>%
+  .[,2]
+
+
+#Create function to clean the text ready for text mining
+#Create a text corpus function for the data frame
+
+
+corpus_tm <- function(x){
+  library(tm)
+  corpus_tm <- Corpus(VectorSource(x))
+  
+}
+
+corpus_positive <- corpus_tm(ws_highlights$Highlights)
+corpus_improvements <- corpus_tm(ws_improvements$Improvements)
+
+clean_corpus <- function(corpus_to_use){
+  library(magrittr)
+  library(tm)
+  corpus_to_use %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace) %>%
+    tm_map(content_transformer(function(x) iconv(x, to='UTF-8', sub='byte'))) %>%
+    tm_map(removeNumbers) %>%
+    tm_map(removeWords, stopwords("en")) %>% 
+    tm_map(content_transformer(tolower)) %>%
+    tm_map(removeWords, c("etc","ie", "eg", stopwords("english")))
+
+}
+
+
+corpus_positive <- clean_corpus(corpus_positive)
+corpus_improvements <- clean_corpus(corpus_improvements)
+
+
+#Create frequent terms matrix function
+
+find_freq_terms_fun <- function(corpus_in){
+  doc_term_mat <- TermDocumentMatrix(corpus_in)
+  freq_terms <- findFreqTerms(doc_term_mat)[1:max(doc_term_mat$nrow)]
+  terms_grouped <-
+    doc_term_mat[freq_terms,] %>%
+    as.matrix() %>%
+    rowSums() %>%
+    data.frame(Term=freq_terms, Frequency = .) %>% 
+    arrange(desc(Frequency)) %>%
+    mutate(prop_term_to_total_terms=Frequency/nrow(.))
+  return(data.frame(terms_grouped))
+  
+}
+
+positive_freq_terms <- data.frame(find_freq_terms_fun(corpus_positive))
+improvement_freq_terms <- data.frame(find_freq_terms_fun(corpus_improvements))
+
+
+wordcloud2(positive_freq_terms[,1:2],
+           shape="circle",
+           color="random-dark")
+
+wordcloud2(improvement_freq_terms[,1:2],
+           shape="pentagon",
+           color="random-dark")
+
+
+
+
+#Write all data frames to csv
+write.csv(positive_freq_terms, "highlights.csv")
+write.csv(improvement_freq_terms, "improvements.csv")
+
+
+
